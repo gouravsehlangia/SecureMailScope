@@ -14,19 +14,17 @@ def display_three_records(enriched_sessions: list, raw_sessions: list):
     print("      PART 1: FULL ENRICHED RECORDS FOR 3 REPRESENTATIVE SESSIONS")
     print("=" * 75)
 
-    # 1. sess_032 — highest risk_score (well-known from prior run)
-    sess_032 = next((s for s in enriched_sessions if s["session_id"] == "sess_032"), None)
-
-    # 2. sess_046 — highest anomaly score (outlier: DH_anon + RC4 + expired cert)
-    sess_046 = next((s for s in enriched_sessions if s["session_id"] == "sess_046"), None)
-
-    # 3. Random "low" risk session
-    low_risk_sessions = [s for s in enriched_sessions if s["risk_level"] == "low"]
+    # 1. Highest risk score session
+    sess_high_risk = max(enriched_sessions, key=lambda s: (s.get("risk_score", 0), s.get("raw_score", 0)))
+    # 2. Highest anomaly score session
+    sess_high_anom = max(enriched_sessions, key=lambda s: s.get("anomaly_score", -999))
+    # 3. Random or first low risk session
+    low_risk_sessions = [s for s in enriched_sessions if s.get("risk_level") == "low"]
     low_risk_sample = choice(low_risk_sessions) if low_risk_sessions else enriched_sessions[0]
 
     samples = [
-        (f"sess_032 — HIGHEST RISK_SCORE session (risk_score={sess_032['risk_score']}, raw_score={sess_032['raw_score']})", sess_032),
-        (f"sess_046 — HIGHEST ANOMALY SCORE session (risk_score={sess_046['risk_score']}, raw_score={sess_046['raw_score']})", sess_046),
+        (f"{sess_high_risk['session_id']} — HIGHEST RISK_SCORE session (risk_score={sess_high_risk['risk_score']}, raw_score={sess_high_risk['raw_score']})", sess_high_risk),
+        (f"{sess_high_anom['session_id']} — HIGHEST ANOMALY SCORE session (risk_score={sess_high_anom['risk_score']}, raw_score={sess_high_anom['raw_score']})", sess_high_anom),
         (f"RANDOM 'LOW' RISK SESSION (ID: {low_risk_sample['session_id']}, risk_score={low_risk_sample['risk_score']})", low_risk_sample)
     ]
 
@@ -45,12 +43,13 @@ def test_pipeline_and_network():
     assert os.path.exists(mock_file), f"Error: {mock_file} missing!"
     with open(mock_file, "r") as f:
         mock_sessions = json.load(f)
-    print(f"[TEST 1] Loaded {len(mock_sessions)} mock sessions from '{mock_file}' -> PASSED")
+    expected_count = len(mock_sessions)
+    print(f"[TEST 1] Loaded {expected_count} mock sessions from '{mock_file}' -> PASSED")
 
     # Test 2: Run Pipeline Execution
     print("\n[TEST 2] Running pipeline enrichment execution...")
     enriched = run_pipeline(input_path=mock_file, output_path="enriched_sessions.json")
-    assert len(enriched) == 200, f"Expected 200 sessions, got {len(enriched)}"
+    assert len(enriched) == expected_count, f"Expected {expected_count} sessions, got {len(enriched)}"
     print(f"         Pipeline enriched {len(enriched)} sessions -> PASSED")
 
     # Display 3 Enriched Records required by User Request
@@ -80,7 +79,7 @@ def test_pipeline_and_network():
     res_all = client.get("/api/sessions")
     assert res_all.status_code == 200
     sessions_data = res_all.json()
-    assert len(sessions_data) == 200
+    assert len(sessions_data) == expected_count
     print(f"         GET /api/sessions -> {len(sessions_data)} sessions returned (HTTP 200) -> PASSED")
 
     res_crit = client.get("/api/sessions?risk_level=critical")
@@ -91,10 +90,11 @@ def test_pipeline_and_network():
     assert res_anom.status_code == 200
     print(f"         GET /api/sessions?anomaly_only=true -> {len(res_anom.json())} sessions -> PASSED")
 
-    res_single = client.get("/api/sessions/sess_001")
+    first_sid = mock_sessions[0]["session_id"]
+    res_single = client.get(f"/api/sessions/{first_sid}")
     assert res_single.status_code == 200
-    assert res_single.json()["session_id"] == "sess_001"
-    print(f"         GET /api/sessions/sess_001 -> Session sess_001 details -> PASSED")
+    assert res_single.json()["session_id"] == first_sid
+    print(f"         GET /api/sessions/{first_sid} -> Session {first_sid} details -> PASSED")
 
     # Test 5: Real Network Test using Subprocess & Requests
     print("\n[TEST 5] REAL NETWORK TEST: Spawning Uvicorn Subprocess on Port 8000...")
@@ -125,7 +125,7 @@ def test_pipeline_and_network():
         res = requests.get(url, timeout=5)
         assert res.status_code == 200, f"Expected HTTP 200, got {res.status_code}"
         data = res.json()
-        assert isinstance(data, list) and len(data) == 200, f"Expected 200 sessions over network, got {len(data)}"
+        assert isinstance(data, list) and len(data) == expected_count, f"Expected {expected_count} sessions over network, got {len(data)}"
         
         print(f"         RECEIVED {len(data)} SESSIONS OVER REAL HTTP NETWORK SOCKET (Status: {res.status_code})")
         print("         REAL NETWORK TEST -> PASSED")
