@@ -195,3 +195,44 @@ export async function uploadPcapForAnalysis(file, onProgress) {
     xhr.send(form);
   });
 }
+
+/**
+ * Fetch the last 10 analysis history entries from the backend.
+ * Returns an array of metadata objects (run_id, timestamp, session_count, risk_summary, etc.).
+ */
+export async function fetchHistory() {
+  try {
+    const data = await tryFetch('/api/history');
+    return { history: data, source: 'live' };
+  } catch {
+    return { history: [], source: 'offline' };
+  }
+}
+
+/**
+ * Load a specific past analysis run by run_id.
+ * Returns { metadata, sessions }.
+ */
+export async function fetchHistoryRun(runId) {
+  try {
+    const data = await tryFetch(`/api/history/${runId}`);
+    return { run: data, source: 'live' };
+  } catch {
+    return { run: null, source: 'offline' };
+  }
+}
+
+/**
+ * Delete a specific analysis history run.
+ */
+export async function deleteHistoryRun(runId) {
+  try {
+    const res = await fetch(`${BASE_URL}/api/history/${runId}`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

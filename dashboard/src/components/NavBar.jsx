@@ -22,6 +22,16 @@ const NAV_TABS = [
     ),
   },
   {
+    id: 'history',
+    label: 'History',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
     id: 'compare',
     label: 'Compare',
     icon: (
@@ -116,7 +126,7 @@ export default function NavBar({ currentPage, source, onNavigate, onRefresh, ses
             <span className="w-2 h-2 rounded-full bg-emerald-500 glow-pulse" />
             <div className="leading-tight">
               <p className="text-[11px] font-bold text-slate-700">Analysis Complete</p>
-              <p className="text-[10px] text-slate-400 font-mono">Apr 27, 2026 14:32</p>
+              <p className="text-[10px] text-slate-400 font-mono">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</p>
             </div>
           </div>
 
@@ -134,14 +144,6 @@ export default function NavBar({ currentPage, source, onNavigate, onRefresh, ses
 
           {/* Export Menu */}
           <ExportMenu sessions={sessions} />
-
-          {/* User/Team Avatar Badge (AM from image) */}
-          <div
-            title="NIT Kurukshetra - Team 6 (SIH26159)"
-            className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-cyan-400 flex items-center justify-center text-white text-xs font-black shadow-sm ring-2 ring-white/90 cursor-pointer select-none"
-          >
-            AM
-          </div>
 
         </div>
       </div>
