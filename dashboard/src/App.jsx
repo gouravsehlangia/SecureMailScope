@@ -15,6 +15,7 @@ import SessionTable from './components/SessionTable';
 import SessionDetail from './components/SessionDetail';
 import UploadPage from './pages/UploadPage';
 import ComparePage from './pages/ComparePage';
+import HistoryPage from './pages/HistoryPage';
 
 export default function App() {
   const [page, setPage]             = useState('dashboard');
@@ -50,6 +51,16 @@ export default function App() {
     setSelected(null);
     setFilters({ severity: null, anomalyOnly: false, search: '' });
     setPage('dashboard');
+  }
+
+  function handleLoadHistoryRun(historySessions) {
+    if (historySessions && historySessions.length > 0) {
+      setSessions(historySessions);
+      setSource('live');
+      setSelected(null);
+      setFilters({ severity: null, anomalyOnly: false, search: '' });
+      setPage('dashboard');
+    }
   }
 
   useEffect(() => {
@@ -93,6 +104,11 @@ export default function App() {
         {/* Upload Page */}
         {page === 'upload' && (
           <UploadPage onComplete={handleAnalysisComplete} />
+        )}
+
+        {/* History Page */}
+        {page === 'history' && (
+          <HistoryPage onLoadRun={handleLoadHistoryRun} />
         )}
 
         {/* Compare Page */}

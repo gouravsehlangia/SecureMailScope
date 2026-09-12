@@ -4,3 +4,7 @@ pandas
 numpy
 fastapi
 uvicorn
+cryptography
+scapy
+python-multipart
+requests
