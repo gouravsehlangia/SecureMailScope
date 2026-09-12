@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { validatePcapFile, uploadPcapForAnalysis } from '../lib/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 
 const SORDER    = ['critical', 'high', 'medium', 'low'];
 const DS_COLORS = ['#6366f1', '#06b6d4', '#f472b6', '#a78bfa', '#34d399', '#f59e0b'];
@@ -20,18 +20,43 @@ const fmtBytes = (b) => {
 
 function computeMetrics(sessions) {
   const t = sessions.length;
-  if (!t) return null;
+  if (!t) return {
+    total: 0, critical: 0, high: 0, medium: 0, low: 0, anomalies: 0,
+    avgScore: 0, noPfs: 0, tls13: 0, certIssues: 0,
+    encrypted: 0, plaintext: 0,
+    protocols: {}, tlsVersions: {},
+    avgHandshake: 0, empty: true,
+  };
+
+  // Protocol breakdown
+  const protocols = {};
+  const tlsVersions = {};
+  let handshakeSum = 0;
+  sessions.forEach(s => {
+    const p = s.protocol || 'UNKNOWN';
+    protocols[p] = (protocols[p] || 0) + 1;
+    const tv = s.tls_version || 'None (Plaintext)';
+    tlsVersions[tv] = (tlsVersions[tv] || 0) + 1;
+    handshakeSum += (s.handshake_duration_ms || 0);
+  });
+
   return {
-    total:      t,
-    critical:   sessions.filter(s => s.risk_level === 'critical').length,
-    high:       sessions.filter(s => s.risk_level === 'high').length,
-    medium:     sessions.filter(s => s.risk_level === 'medium').length,
-    low:        sessions.filter(s => s.risk_level === 'low').length,
-    anomalies:  sessions.filter(s => s.anomaly_flag).length,
-    avgScore:   Math.round(sessions.reduce((a, s) => a + (s.risk_score || 0), 0) / t),
-    noPfs:      sessions.filter(s => !s.forward_secrecy).length,
-    tls13:      sessions.filter(s => s.tls_version === 'TLS 1.3').length,
-    certIssues: sessions.filter(s => s.cert_expired || !s.cert_chain_valid).length,
+    total:       t,
+    critical:    sessions.filter(s => s.risk_level === 'critical').length,
+    high:        sessions.filter(s => s.risk_level === 'high').length,
+    medium:      sessions.filter(s => s.risk_level === 'medium').length,
+    low:         sessions.filter(s => s.risk_level === 'low').length,
+    anomalies:   sessions.filter(s => s.anomaly_flag).length,
+    avgScore:    Math.round(sessions.reduce((a, s) => a + (s.risk_score || 0), 0) / t),
+    noPfs:       sessions.filter(s => !s.forward_secrecy).length,
+    tls13:       sessions.filter(s => s.tls_version === 'TLS 1.3').length,
+    certIssues:  sessions.filter(s => s.cert_expired || !s.cert_chain_valid).length,
+    encrypted:   sessions.filter(s => s.tls_present || s.tls_version).length,
+    plaintext:   sessions.filter(s => !s.tls_present && !s.tls_version).length,
+    protocols,
+    tlsVersions,
+    avgHandshake: Math.round(handshakeSum / t),
+    empty: false,
   };
 }
 
@@ -64,11 +89,9 @@ function UploadSlot({ index, color, onReady, onClear, ready }) {
     try {
       const res = await uploadPcapForAnalysis(file, (pct) => setProgress(pct));
 
-      // Strict check — require real sessions from the backend
-      if (!res || !Array.isArray(res.sessions) || res.sessions.length === 0) {
-        setError(
-          'Backend returned no sessions. Ensure the PCAP contains SMTP/IMAP/POP3 traffic and the pipeline is running.'
-        );
+      // Allow 0-session results — still valid (the PCAP just has no email traffic)
+      if (!res || !Array.isArray(res.sessions)) {
+        setError('Backend returned invalid data. Check if pipeline.py is running correctly.');
         setUploading(false);
         return;
       }
@@ -324,21 +347,36 @@ export default function ComparePage() {
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
                 <span className="text-xs font-bold text-slate-700">{d.label}</span>
                 {d.timestamp && <span className="text-[10px] text-slate-400 font-mono">({d.timestamp})</span>}
-                {d.metadata?.session_count != null && (
-                  <span className="text-[10px] text-slate-400">{d.metadata.session_count} sessions</span>
-                )}
+                <span className="text-[10px] text-slate-400">
+                  {d.sessions.length} session{d.sessions.length !== 1 ? 's' : ''}
+                </span>
               </div>
             ))}
           </div>
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 stagger">
+          {/* 0-session warning */}
+          {datasets.some(d => d.sessions.length === 0) && (
+            <div className="flex items-start gap-3 px-5 py-3 rounded-2xl bg-amber-50 border border-amber-200">
+              <span className="text-amber-500 text-lg mt-0.5">⚠</span>
+              <div>
+                <p className="text-xs font-bold text-amber-800">Some captures produced no email sessions</p>
+                <p className="text-[11px] text-amber-600 mt-0.5">
+                  {datasets.filter(d => d.sessions.length === 0).map(d => d.label).join(', ')}
+                  {' — '}The PCAP(s) may not contain SMTP/IMAP/POP3 traffic. Only captures with email sessions have comparable metrics.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* KPI Cards — expanded set */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 stagger">
             {[
-              { label: 'Sessions',       key: 'total' },
-              { label: 'Critical Risk',  key: 'critical' },
-              { label: 'AI Anomalies',   key: 'anomalies' },
-              { label: 'Avg Risk Score', key: 'avgScore' },
-              { label: 'No PFS',         key: 'noPfs' },
+              { label: 'Sessions',      key: 'total' },
+              { label: 'Critical',      key: 'critical' },
+              { label: 'AI Anomalies',  key: 'anomalies' },
+              { label: 'Avg Score',     key: 'avgScore' },
+              { label: 'Encrypted',     key: 'encrypted' },
+              { label: 'Plaintext',     key: 'plaintext' },
             ].map(metric => (
               <div key={metric.label} className="glass-card rounded-2xl p-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">{metric.label}</p>
@@ -355,8 +393,9 @@ export default function ComparePage() {
             ))}
           </div>
 
-          {/* Charts */}
+          {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Risk Level bar chart */}
             <div className="glass-card rounded-2xl p-5">
               <h3 className="text-sm font-bold text-slate-800 mb-1">Risk Level Distribution</h3>
               <p className="text-[11px] text-slate-400 mb-4">Sessions per severity across captures</p>
@@ -375,19 +414,21 @@ export default function ComparePage() {
               </div>
             </div>
 
+            {/* Full metrics table */}
             <div className="glass-card rounded-2xl overflow-hidden">
               <div className="px-5 py-3 border-b border-white/60">
-                <h3 className="text-sm font-bold text-slate-800">Full Metrics Breakdown</h3>
+                <h3 className="text-sm font-bold text-slate-800">Aggregate Metrics</h3>
               </div>
               <div className="divide-y divide-white/50 overflow-y-auto max-h-80">
                 {[
-                  ['Total Sessions', 'total'],    ['Critical', 'critical'],   ['High', 'high'],
-                  ['Medium', 'medium'],            ['Low', 'low'],             ['Anomalies', 'anomalies'],
-                  ['Avg Risk Score', 'avgScore'],  ['No PFS', 'noPfs'],        ['TLS 1.3', 'tls13'],
-                  ['Cert Issues', 'certIssues'],
+                  ['Total Sessions', 'total'],     ['Critical', 'critical'],    ['High', 'high'],
+                  ['Medium', 'medium'],             ['Low', 'low'],              ['Anomalies', 'anomalies'],
+                  ['Avg Risk Score', 'avgScore'],   ['No PFS', 'noPfs'],         ['TLS 1.3', 'tls13'],
+                  ['Cert Issues', 'certIssues'],    ['Encrypted', 'encrypted'],  ['Plaintext', 'plaintext'],
+                  ['Avg Handshake (ms)', 'avgHandshake'],
                 ].map(([label, key]) => (
                   <div key={key} className="flex items-center gap-3 px-5 py-2.5">
-                    <span className="text-[11px] text-slate-400 font-semibold w-36 shrink-0">{label}</span>
+                    <span className="text-[11px] text-slate-400 font-semibold w-40 shrink-0">{label}</span>
                     <div className="flex items-center gap-4 flex-wrap">
                       {datasets.map(d => (
                         <div key={d.id} className="flex items-center gap-1.5">
@@ -402,11 +443,197 @@ export default function ComparePage() {
             </div>
           </div>
 
+          {/* ═══ Protocol & TLS Breakdown ═══ */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Protocol distribution per capture */}
+            <div className="glass-card rounded-2xl p-5">
+              <h3 className="text-sm font-bold text-slate-800 mb-1">Protocol Breakdown</h3>
+              <p className="text-[11px] text-slate-400 mb-3">Email protocols detected in each capture</p>
+              <div className="space-y-4">
+                {datasets.map(d => (
+                  <div key={d.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                      <span className="text-xs font-bold text-slate-700">{d.label}</span>
+                    </div>
+                    {d.metrics?.protocols && Object.keys(d.metrics.protocols).length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 ml-5">
+                        {Object.entries(d.metrics.protocols).map(([proto, count]) => (
+                          <span key={proto} className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-[10px] font-bold text-indigo-700">
+                            {proto}: {count}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 ml-5 italic">No email sessions</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* TLS version distribution per capture */}
+            <div className="glass-card rounded-2xl p-5">
+              <h3 className="text-sm font-bold text-slate-800 mb-1">TLS Version Breakdown</h3>
+              <p className="text-[11px] text-slate-400 mb-3">Encryption versions across captures</p>
+              <div className="space-y-4">
+                {datasets.map(d => (
+                  <div key={d.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                      <span className="text-xs font-bold text-slate-700">{d.label}</span>
+                    </div>
+                    {d.metrics?.tlsVersions && Object.keys(d.metrics.tlsVersions).length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 ml-5">
+                        {Object.entries(d.metrics.tlsVersions).map(([ver, count]) => {
+                          const bad = ver.includes('1.0') || ver.includes('1.1') || ver.includes('Plain');
+                          return (
+                            <span key={ver} className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold ${
+                              bad ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            }`}>
+                              {ver}: {count}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-400 ml-5 italic">No sessions</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Per-Session Detail Table ═══ */}
+          <div className="glass-card rounded-2xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-white/60">
+              <h3 className="text-sm font-bold text-slate-800">Individual Session Comparison</h3>
+              <p className="text-[11px] text-slate-400">Every session from each capture, side by side</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-slate-50/80">
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Capture</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Session ID</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Protocol</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">TLS Version</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Cipher Suite</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">PFS</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Client → Server</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Handshake</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Risk</th>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wider">Violations</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/50">
+                  {datasets.flatMap(d =>
+                    d.sessions.length === 0 ? [
+                      <tr key={`${d.id}-empty`} className="bg-amber-50/50">
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                            <span className="font-bold text-slate-700">{d.label}</span>
+                          </div>
+                        </td>
+                        <td colSpan={9} className="px-3 py-2 text-amber-600 italic">No email sessions found in this capture</td>
+                      </tr>
+                    ] : d.sessions.map((s, si) => {
+                      const riskColors = {
+                        critical: 'bg-rose-100 text-rose-700',
+                        high: 'bg-orange-100 text-orange-700',
+                        medium: 'bg-amber-100 text-amber-700',
+                        low: 'bg-emerald-100 text-emerald-700',
+                      };
+                      return (
+                        <tr key={`${d.id}-${si}`} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-3 py-2">
+                            {si === 0 && (
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                                <span className="font-bold text-slate-700">{d.label}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-600 max-w-[140px] truncate" title={s.session_id}>
+                            {s.session_id}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 font-bold text-slate-700">{s.protocol || '—'}</span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {s.tls_version ? (
+                              <span className={`px-2 py-0.5 rounded-md font-bold ${
+                                ['TLS 1.0','TLS 1.1'].includes(s.tls_version)
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : s.tls_version === 'TLS 1.3'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-blue-100 text-blue-700'
+                              }`}>{s.tls_version}</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-600 font-semibold">Plaintext</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-600 max-w-[160px] truncate" title={s.cipher_suite}>
+                            {s.cipher_suite || '—'}
+                          </td>
+                          <td className="px-3 py-2">
+                            {s.forward_secrecy
+                              ? <span className="text-emerald-600 font-bold">✓ Yes</span>
+                              : <span className="text-rose-500 font-bold">✕ No</span>
+                            }
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-500 text-[10px]">
+                            {s.client_ip}:{s.client_port} → {s.server_ip}:{s.server_port}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-600">
+                            {s.handshake_duration_ms || 0}ms
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${riskColors[s.risk_level] || 'bg-slate-100 text-slate-600'}`}>
+                              {s.risk_level?.toUpperCase()} ({s.risk_score})
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 max-w-[200px]">
+                            {(s.rule_violations || []).length > 0 ? (
+                              <ul className="space-y-0.5">
+                                {s.rule_violations.slice(0, 3).map((v, vi) => (
+                                  <li key={vi} className="text-[9px] text-rose-600 leading-tight">• {v}</li>
+                                ))}
+                                {s.rule_violations.length > 3 && (
+                                  <li className="text-[9px] text-slate-400">+{s.rule_violations.length - 3} more</li>
+                                )}
+                              </ul>
+                            ) : (
+                              <span className="text-[10px] text-emerald-600">None</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* Grade Cards */}
           <div className="glass-card rounded-2xl p-5">
             <h3 className="text-sm font-bold text-slate-800 mb-3">Security Posture Grades</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {datasets.map(d => {
+                if (d.metrics?.empty) {
+                  return (
+                    <div key={d.id} className="flex items-center gap-4 p-4 rounded-xl glass border border-amber-200 bg-amber-50/50">
+                      <div className="text-4xl font-black font-mono text-slate-300">—</div>
+                      <div>
+                        <p className="font-bold text-slate-800 text-sm">{d.label}</p>
+                        <p className="text-[11px] text-amber-600 mt-0.5">No email sessions — cannot grade</p>
+                      </div>
+                    </div>
+                  );
+                }
                 const { g, c } = getGrade(d.metrics.avgScore);
                 return (
                   <div key={d.id} className="flex items-center gap-4 p-4 rounded-xl glass border border-white/70">
@@ -416,7 +643,9 @@ export default function ComparePage() {
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {d.metrics.critical} critical · {d.metrics.anomalies} anomalies · score {d.metrics.avgScore}
                       </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{d.metrics.total} sessions analyzed</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {d.metrics.total} sessions · {d.metrics.encrypted} encrypted · {d.metrics.plaintext} plaintext
+                      </p>
                     </div>
                   </div>
                 );
