@@ -9,12 +9,14 @@ import ProtocolBreakdownChart from './components/ProtocolBreakdownChart';
 import RiskDistributionChart from './components/RiskDistributionChart';
 import QuickStatsWidget from './components/QuickStatsWidget';
 import RecentActivityWidget from './components/RecentActivityWidget';
-import PromoCardWidget from './components/PromoCardWidget';
 import FilterBar from './components/FilterBar';
 import SessionTable from './components/SessionTable';
 import SessionDetail from './components/SessionDetail';
 import UploadPage from './pages/UploadPage';
 import ComparePage from './pages/ComparePage';
+
+const STORAGE_SESSIONS_KEY = 'securemailscope_sessions_history';
+const STORAGE_TIME_KEY = 'securemailscope_last_analysis_time';
 
 export default function App() {
   const [page, setPage]             = useState('dashboard');
@@ -25,14 +27,34 @@ export default function App() {
   const [selected, setSelected]     = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters]       = useState({ severity: null, anomalyOnly: false, search: '' });
+  const [lastAnalysisTime, setLastAnalysisTime] = useState(() => {
+    return localStorage.getItem(STORAGE_TIME_KEY) || new Date().toISOString();
+  });
+
+  // Keep max 10 sessions. If new sessions come in, keep most recent 10 (drop oldest)
+  function applySessionsWithLimit(newSessions, src = 'live', timestamp = null) {
+    const list = Array.isArray(newSessions) ? newSessions : [];
+    // Ensure only the latest 10 are kept
+    const clamped = list.slice(0, 10);
+    setSessions(clamped);
+    setSource(src);
+    try {
+      localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(clamped));
+    } catch {}
+
+    const nowIso = timestamp || new Date().toISOString();
+    setLastAnalysisTime(nowIso);
+    try {
+      localStorage.setItem(STORAGE_TIME_KEY, nowIso);
+    } catch {}
+  }
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const { sessions: data, source: src } = await fetchSessions();
-      setSessions(data);
-      setSource(src);
+      applySessionsWithLimit(data, src);
     } catch {
       setError('Could not load session telemetry.');
     } finally {
@@ -41,9 +63,22 @@ export default function App() {
   }
 
   function handleAnalysisComplete(enrichedSessions) {
-    if (enrichedSessions) {
-      setSessions(enrichedSessions);
+    if (enrichedSessions && Array.isArray(enrichedSessions)) {
+      // If adding new analysis sessions to existing list, merge with 10 max FIFO (newest first, drop oldest beyond 10)
+      setSessions(prev => {
+        const combined = [...enrichedSessions, ...prev];
+        const limited = combined.slice(0, 10);
+        try {
+          localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(limited));
+        } catch {}
+        return limited;
+      });
       setSource('live');
+      const nowIso = new Date().toISOString();
+      setLastAnalysisTime(nowIso);
+      try {
+        localStorage.setItem(STORAGE_TIME_KEY, nowIso);
+      } catch {}
     } else {
       load();
     }
@@ -53,9 +88,18 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (sessions.length === 0) {
-      load();
+    const cached = localStorage.getItem(STORAGE_SESSIONS_KEY);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed.slice(0, 10));
+          setSource('sample');
+          return;
+        }
+      } catch {}
     }
+    load();
   }, []);
 
   const filtered = useMemo(() =>
@@ -86,6 +130,7 @@ export default function App() {
         }}
         onRefresh={load}
         sessions={filtered}
+        lastAnalysisTime={lastAnalysisTime}
       />
 
       {/* ── MAIN CONTENT ── */}
@@ -171,8 +216,7 @@ export default function App() {
                   <div className="xl:col-span-4 2xl:col-span-3 space-y-4">
                     <RiskDistributionChart sessions={sessions} />
                     <QuickStatsWidget sessions={sessions} />
-                    <RecentActivityWidget sessions={sessions} />
-                    <PromoCardWidget onAction={() => setPage('compare')} />
+                    <RecentActivityWidget sessions={sessions} lastAnalysisTime={lastAnalysisTime} />
                   </div>
                 </div>
               </>

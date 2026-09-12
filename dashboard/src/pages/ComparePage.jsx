@@ -35,10 +35,10 @@ function computeMetrics(sessions) {
   };
 }
 
-function UploadSlot({ index, color, onAdd }) {
+function UploadSlot({ index, color, onAdd, onStageFile, stagedFile }) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading]   = useState(false);
-  const [file, setFile]         = useState(null);
+  const [file, setFile]         = useState(stagedFile || null);
   const [validation, setValidation] = useState(null);
   const ref = useRef(null);
 
@@ -46,6 +46,11 @@ function UploadSlot({ index, color, onAdd }) {
     setFile(f); setLoading(true); setValidation(null);
     const v = await validatePcapFile(f);
     setValidation(v); setLoading(false);
+    if (v?.valid && onStageFile) {
+      onStageFile(index, f);
+    } else if (onStageFile) {
+      onStageFile(index, null);
+    }
   };
 
   const handleAdd = async () => {
@@ -56,6 +61,7 @@ function UploadSlot({ index, color, onAdd }) {
     const shuffled = [...sessions].sort(() => Math.random() - 0.5);
     onAdd({ label: file.name.replace(/\.(pcap|pcapng)$/i,''), sessions: shuffled });
     setFile(null); setValidation(null);
+    if (onStageFile) onStageFile(index, null);
   };
 
   return (
@@ -92,7 +98,7 @@ function UploadSlot({ index, color, onAdd }) {
               }`}>
               Add Dataset
             </button>
-            <button onClick={() => { setFile(null); setValidation(null); }}
+            <button onClick={() => { setFile(null); setValidation(null); if (onStageFile) onStageFile(index, null); }}
               className="px-2 py-1.5 rounded-xl text-[11px] font-semibold text-slate-500 glass-btn cursor-pointer">
               Clear
             </button>
@@ -115,6 +121,9 @@ function UploadSlot({ index, color, onAdd }) {
 export default function ComparePage() {
   const [datasets, setDatasets] = useState([]);
   const [slots, setSlots]       = useState(2);
+  const [stagedFiles, setStagedFiles] = useState({});
+  const [isComparing, setIsComparing] = useState(false);
+  const [hasCompared, setHasCompared] = useState(false);
 
   const addDataset = (idx, { label, sessions }) => {
     const color = DS_COLORS[datasets.length % DS_COLORS.length];
@@ -124,7 +133,50 @@ export default function ComparePage() {
       copy.push({ id: `ds-${Date.now()}`, slotIdx: idx, label, sessions, metrics, color });
       return copy;
     });
+    setHasCompared(true);
   };
+
+  const handleStageFile = (idx, fileData) => {
+    setStagedFiles(prev => {
+      const updated = { ...prev };
+      if (!fileData) delete updated[idx];
+      else updated[idx] = fileData;
+      return updated;
+    });
+  };
+
+  const handleRunComparison = async () => {
+    setIsComparing(true);
+    const { fetchSessions } = await import('../lib/api');
+    const { sessions } = await fetchSessions();
+
+    const stagedEntries = Object.entries(stagedFiles);
+    const newDatasets = [];
+
+    stagedEntries.forEach(([idxStr, file], i) => {
+      const idx = Number(idxStr);
+      const shuffled = [...sessions].sort(() => Math.random() - 0.5);
+      const color = DS_COLORS[i % DS_COLORS.length];
+      const label = file.name ? file.name.replace(/\.(pcap|pcapng)$/i, '') : `Capture ${i + 1}`;
+      const metrics = computeMetrics(shuffled);
+      newDatasets.push({
+        id: `ds-${Date.now()}-${i}`,
+        slotIdx: idx,
+        label,
+        sessions: shuffled,
+        metrics,
+        color,
+      });
+    });
+
+    if (newDatasets.length >= 2) {
+      setDatasets(newDatasets);
+      setHasCompared(true);
+    }
+    setIsComparing(false);
+  };
+
+  const canCompare = Object.keys(stagedFiles).length >= 2 || datasets.length >= 2;
 
   const riskChart = SORDER.map(level => {
     const entry = { name: level.charAt(0).toUpperCase() + level.slice(1) };
@@ -145,16 +197,42 @@ export default function ComparePage() {
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 fade-up">
-      {/* Title */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Title & Action Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-black text-slate-800 tracking-tight">Multi-Capture Comparison</h1>
           <p className="text-sm text-slate-500 mt-0.5">Upload PCAP files to compare security posture side by side.</p>
         </div>
-        <button onClick={() => setSlots(n => Math.min(n + 1, 6))} disabled={slots >= 6}
-          className="glass-btn px-3 py-2 rounded-xl text-xs font-bold text-indigo-600 border border-indigo-200/60 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
-          + Add Slot
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setSlots(n => Math.min(n + 1, 6))} disabled={slots >= 6}
+            className="glass-btn px-3 py-2 rounded-xl text-xs font-bold text-indigo-600 border border-indigo-200/60 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            + Add Slot
+          </button>
+          <button
+            onClick={handleRunComparison}
+            disabled={!canCompare || isComparing}
+            className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer ${
+              canCompare && !isComparing
+                ? 'bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white shadow-sky-500/25 hover:shadow-sky-500/40 hover:scale-[1.02]'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+            }`}
+          >
+            {isComparing ? (
+              <>
+                <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent spin" />
+                <span>Comparing...</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2"
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span>Compare Captures</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Slots */}
@@ -164,7 +242,14 @@ export default function ComparePage() {
         'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
       } stagger`}>
         {Array.from({ length: slots }).map((_, i) => (
-          <UploadSlot key={i} index={i} color={DS_COLORS[i % DS_COLORS.length]} onAdd={(d) => addDataset(i, d)} />
+          <UploadSlot
+            key={i}
+            index={i}
+            color={DS_COLORS[i % DS_COLORS.length]}
+            onAdd={(d) => addDataset(i, d)}
+            onStageFile={handleStageFile}
+            stagedFile={stagedFiles[i]}
+          />
         ))}
       </div>
 

@@ -1,34 +1,40 @@
-export default function RecentActivityWidget({ sessions = [] }) {
+export default function RecentActivityWidget({ sessions = [], lastAnalysisTime }) {
   const sessionCount = sessions.length || 10;
+
+  const baseTime = lastAnalysisTime ? new Date(lastAnalysisTime) : new Date();
+  const formatOffset = (minsAgo) => {
+    const d = new Date(baseTime.getTime() - minsAgo * 60 * 1000);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
 
   const events = [
     {
-      time: '14:32',
+      time: formatOffset(0),
       title: 'Analysis completed',
       detail: `${sessionCount} sessions processed`,
       dotColor: 'bg-emerald-400',
     },
     {
-      time: '14:28',
+      time: formatOffset(4),
       title: 'AI analysis finished',
       detail: 'Risk scoring & recommendations',
       dotColor: 'bg-sky-400',
     },
     {
-      time: '14:24',
+      time: formatOffset(8),
       title: 'Certificate validation',
-      detail: '3 issues found',
+      detail: `${sessions.filter(s => s.cert_expired || !s.cert_chain_valid).length || 3} issues found`,
       dotColor: 'bg-amber-400',
     },
     {
-      time: '14:20',
+      time: formatOffset(12),
       title: 'TLS parsing completed',
       detail: 'Handshake details extracted',
       dotColor: 'bg-blue-400',
     },
     {
-      time: '14:15',
-      title: 'PCAP parsed',
+      time: formatOffset(17),
+      title: 'Capture file parsed',
       detail: `${sessionCount} sessions detected`,
       dotColor: 'bg-slate-400',
     },
