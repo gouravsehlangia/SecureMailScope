@@ -76,3 +76,7 @@ Thumbs.db
 *.swp
 *.swo
 *.tmp
+
+# History runs
+history/*.json
+!history/.gitkeep

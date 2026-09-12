@@ -9,7 +9,6 @@ import ProtocolBreakdownChart from './components/ProtocolBreakdownChart';
 import RiskDistributionChart from './components/RiskDistributionChart';
 import QuickStatsWidget from './components/QuickStatsWidget';
 import RecentActivityWidget from './components/RecentActivityWidget';
-import PromoCardWidget from './components/PromoCardWidget';
 import FilterBar from './components/FilterBar';
 import SessionTable from './components/SessionTable';
 import SessionDetail from './components/SessionDetail';
@@ -188,7 +187,6 @@ export default function App() {
                     <RiskDistributionChart sessions={sessions} />
                     <QuickStatsWidget sessions={sessions} />
                     <RecentActivityWidget sessions={sessions} />
-                    <PromoCardWidget onAction={() => setPage('compare')} />
                   </div>
                 </div>
               </>
