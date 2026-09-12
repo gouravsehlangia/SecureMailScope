@@ -1,28 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchSessions } from './lib/api';
-import TopBar from './components/TopBar';
+import NavBar from './components/NavBar';
+import WelcomeBanner from './components/WelcomeBanner';
 import StatStrip from './components/StatStrip';
-import RiskDistributionChart from './components/RiskDistributionChart';
 import TlsVersionChart from './components/TlsVersionChart';
-import TopViolations from './components/TopViolations';
+import CipherStrengthChart from './components/CipherStrengthChart';
+import ProtocolBreakdownChart from './components/ProtocolBreakdownChart';
+import RiskDistributionChart from './components/RiskDistributionChart';
+import QuickStatsWidget from './components/QuickStatsWidget';
+import RecentActivityWidget from './components/RecentActivityWidget';
+import PromoCardWidget from './components/PromoCardWidget';
 import FilterBar from './components/FilterBar';
 import SessionTable from './components/SessionTable';
 import SessionDetail from './components/SessionDetail';
 import UploadPage from './pages/UploadPage';
+import ComparePage from './pages/ComparePage';
 
-// ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  // "upload" = upload/analysis page  |  "dashboard" = forensic dashboard
-  const [page, setPage] = useState('upload');
+  const [page, setPage]             = useState('dashboard');
+  const [sessions, setSessions]     = useState([]);
+  const [source, setSource]         = useState(null);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState(null);
+  const [selected, setSelected]     = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters]       = useState({ severity: null, anomalyOnly: false, search: '' });
 
-  const [sessions, setSessions]   = useState([]);
-  const [source, setSource]       = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState(null);
-  const [selected, setSelected]   = useState(null);
-  const [filters, setFilters]     = useState({ severity: null, anomalyOnly: false, search: '' });
-
-  // Load from existing backend (used when navigating directly to dashboard)
   async function load() {
     setLoading(true);
     setError(null);
@@ -31,21 +34,17 @@ export default function App() {
       setSessions(data);
       setSource(src);
     } catch {
-      setError('Could not load session data.');
+      setError('Could not load session telemetry.');
     } finally {
       setLoading(false);
     }
   }
 
-  // Called by UploadPage when pipeline is done
-  // sessions = null  →  user clicked "View Dashboard" without uploading (load live/sample)
-  // sessions = array →  came from PCAP pipeline; use directly
   function handleAnalysisComplete(enrichedSessions) {
     if (enrichedSessions) {
       setSessions(enrichedSessions);
-      setSource('live');   // pipeline returned real data
+      setSource('live');
     } else {
-      // User skipped upload, load current enriched_sessions.json
       load();
     }
     setSelected(null);
@@ -53,13 +52,14 @@ export default function App() {
     setPage('dashboard');
   }
 
-  // If dashboard is opened directly (page reload), auto-fetch
   useEffect(() => {
-    if (page === 'dashboard' && sessions.length === 0) load();
-  }, [page]);
+    if (sessions.length === 0) {
+      load();
+    }
+  }, []);
 
-  const filtered = useMemo(() => {
-    return sessions.filter((s) => {
+  const filtered = useMemo(() =>
+    sessions.filter((s) => {
       if (filters.severity && s.risk_level !== filters.severity) return false;
       if (filters.anomalyOnly && !s.anomaly_flag) return false;
       if (filters.search) {
@@ -72,110 +72,129 @@ export default function App() {
         ) return false;
       }
       return true;
-    });
-  }, [sessions, filters]);
+    }), [sessions, filters]);
 
-  // ─── Upload Page ───────────────────────────────────────────────────────────
-  if (page === 'upload') {
-    return <UploadPage onComplete={handleAnalysisComplete} />;
-  }
-
-  // ─── Dashboard Page ────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-blue-500 selection:text-white">
-      {/* Top Navigation Bar */}
-      <TopBar
+    <div className="min-h-dvh flex flex-col selection:bg-sky-500 selection:text-white">
+      {/* ── PERSISTENT TOP NAV — matching existing structure ── */}
+      <NavBar
+        currentPage={page}
         source={source}
+        onNavigate={(p) => {
+          if (p === 'dashboard' && sessions.length === 0) load();
+          setPage(p);
+        }}
         onRefresh={load}
         sessions={filtered}
-        onUploadNew={() => setPage('upload')}
       />
 
-      {/* Main Content */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1440px] w-full mx-auto">
-        {/* Loading */}
-        {loading && (
-          <div className="py-24 flex flex-col items-center justify-center gap-3">
-            <div className="w-8 h-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-medium text-slate-500">
-              Loading email cryptographic telemetry…
-            </p>
-          </div>
+      {/* ── MAIN CONTENT ── */}
+      <main className="flex-1 overflow-x-hidden">
+        {/* Upload Page */}
+        {page === 'upload' && (
+          <UploadPage onComplete={handleAnalysisComplete} />
         )}
 
-        {/* Error */}
-        {error && (
-          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between">
-            <span>{error}</span>
-            <button
-              onClick={load}
-              className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 cursor-pointer"
-            >
-              Retry
-            </button>
-          </div>
+        {/* Compare Page */}
+        {page === 'compare' && (
+          <ComparePage />
         )}
 
-        {/* Dashboard Content */}
-        {!loading && !error && (
-          <>
-            {/* Quick summary strip — shows source of data */}
-            {source === 'live' && sessions.length > 0 && (
-              <div className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-slate-200/80 shadow-xs text-xs text-slate-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-                <span>
-                  Showing <strong className="text-slate-900">{sessions.length} sessions</strong> from{' '}
-                  <span className="font-semibold text-emerald-700">live pipeline output</span>.
-                  {' '}Use <strong>Analyse New Capture</strong> in the top bar to run a fresh PCAP.
-                </span>
+        {/* Dashboard */}
+        {page === 'dashboard' && (
+          <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 fade-up">
+            {/* Loading */}
+            {loading && (
+              <div className="py-24 flex flex-col items-center gap-4">
+                <div className="w-12 h-12 rounded-full border-3 border-sky-300 border-t-sky-600 spin" />
+                <p className="text-sm font-semibold text-slate-600">Loading session telemetry…</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="glass-card rounded-2xl p-4 border-rose-200 flex items-center justify-between gap-4">
+                <span className="text-sm text-rose-600 font-semibold">{error}</span>
                 <button
-                  onClick={() => setPage('upload')}
-                  className="ml-auto px-3 py-1 rounded-lg bg-blue-50 text-blue-700 font-semibold border border-blue-200 hover:bg-blue-100 cursor-pointer whitespace-nowrap"
+                  onClick={load}
+                  className="px-4 py-1.5 bg-rose-500 text-white rounded-xl text-xs font-bold hover:bg-rose-600 transition-colors cursor-pointer"
                 >
-                  + New PCAP
+                  Retry
                 </button>
               </div>
             )}
 
-            {/* Stat Cards */}
-            <StatStrip sessions={sessions} />
+            {!loading && !error && (
+              <>
+                {/* 1. Welcome Greeting Banner */}
+                <WelcomeBanner />
 
-            {/* Charts Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-              <RiskDistributionChart sessions={sessions} />
-              <TlsVersionChart sessions={sessions} />
-              <TopViolations sessions={sessions} />
-            </div>
+                {/* 2. Top 4 KPI Metric Cards */}
+                <StatStrip sessions={sessions} />
 
-            {/* Filter Bar */}
-            <FilterBar
-              filters={filters}
-              setFilters={setFilters}
-              resultCount={filtered.length}
-              totalCount={sessions.length}
-            />
+                {/* 3. Two-Column Master Layout */}
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+                  {/* Left Column (Charts & Session Table) */}
+                  <div className="xl:col-span-8 2xl:col-span-9 space-y-4">
+                    {/* Middle 3 Charts Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <TlsVersionChart sessions={sessions} />
+                      <CipherStrengthChart sessions={sessions} />
+                      <ProtocolBreakdownChart sessions={sessions} />
+                    </div>
 
-            {/* Session Table */}
-            <SessionTable
-              sessions={filtered}
-              onSelect={setSelected}
-              selectedId={selected?.session_id}
-            />
-          </>
+                    {/* Collapsible Filter Bar if toggled */}
+                    {showFilters && (
+                      <div className="fade-up">
+                        <FilterBar
+                          filters={filters}
+                          setFilters={setFilters}
+                          resultCount={filtered.length}
+                          totalCount={sessions.length}
+                        />
+                      </div>
+                    )}
+
+                    {/* Email Sessions Table */}
+                    <SessionTable
+                      sessions={filtered}
+                      onSelect={setSelected}
+                      selectedId={selected?.session_id}
+                      showCount={10}
+                      searchQuery={filters.search}
+                      onSearchChange={(val) => setFilters(f => ({ ...f, search: val }))}
+                      onFilterToggle={() => setShowFilters(prev => !prev)}
+                    />
+                  </div>
+
+                  {/* Right Column (Sidebar Widgets) */}
+                  <div className="xl:col-span-4 2xl:col-span-3 space-y-4">
+                    <RiskDistributionChart sessions={sessions} />
+                    <QuickStatsWidget sessions={sessions} />
+                    <RecentActivityWidget sessions={sessions} />
+                    <PromoCardWidget onAction={() => setPage('compare')} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </main>
 
-      {/* Session Detail Drawer */}
+      {/* Session detail inspector drawer */}
       {selected && (
-        <SessionDetail
-          session={selected}
-          onClose={() => setSelected(null)}
-        />
+        <SessionDetail session={selected} onClose={() => setSelected(null)} />
       )}
 
-      {/* Footer */}
-      <footer className="py-6 border-t border-slate-200 text-center text-xs text-slate-400">
-        SecureMailScope • Automated TLS Security &amp; Forensic Anomaly Analysis
+      {/* Footer with SIH 2026 team credits */}
+      <footer className="py-4 px-6 text-center text-xs text-slate-500 font-medium border-t border-white/60 bg-white/30 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-2 max-w-[1680px] mx-auto w-full">
+        <div className="flex items-center gap-2 text-slate-600">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span>SecureMailScope · AI-Assisted Cryptographic Security Posture Assessment</span>
+        </div>
+        <div className="text-[11px] text-slate-500 font-mono">
+          SIH 2026 | Team 6 | NIT Kurukshetra | SIH26159
+        </div>
       </footer>
     </div>
   );

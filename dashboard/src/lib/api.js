@@ -10,6 +10,7 @@
  */
 
 import sampleSessions from '../data/enriched_sessions.sample.json';
+import showcaseSessions from '../data/sample_showcase_sessions.json';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -37,7 +38,7 @@ export async function fetchSessions({ riskLevel, anomalyOnly } = {}) {
     return { sessions: data, source: 'live' };
   } catch {
     backendReachable = false;
-    let sessions = sampleSessions;
+    let sessions = showcaseSessions;
     if (riskLevel) sessions = sessions.filter((s) => s.risk_level === riskLevel);
     if (anomalyOnly) sessions = sessions.filter((s) => s.anomaly_flag);
     return { sessions, source: 'sample' };
@@ -49,7 +50,8 @@ export async function fetchSessionById(sessionId) {
     const data = await tryFetch(`/api/sessions/${sessionId}`);
     return { session: data, source: 'live' };
   } catch {
-    const session = sampleSessions.find((s) => s.session_id === sessionId) || null;
+    const session = showcaseSessions.find((s) => s.session_id === sessionId) ||
+                    sampleSessions.find((s) => s.session_id === sessionId) || null;
     return { session, source: 'sample' };
   }
 }

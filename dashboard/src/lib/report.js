@@ -40,20 +40,20 @@ export function buildHtmlReport(sessions, meta = {}) {
 <title>SecureMailScope — Security Posture Report</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: 'IBM Plex Mono', ui-monospace, monospace; background: #fff; color: #111; margin: 0; padding: 32px; font-size: 12px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .meta { color: #555; margin-bottom: 20px; font-size: 11px; }
-  .stats { display: flex; gap: 0; border: 1px solid #ccc; margin-bottom: 24px; }
-  .stat { flex: 1; padding: 10px 14px; border-right: 1px solid #ccc; }
-  .stat:last-child { border-right: none; }
-  .stat .label { font-size: 9px; text-transform: uppercase; color: #777; letter-spacing: 0.04em; }
-  .stat .value { font-size: 18px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #ddd; padding: 5px 7px; text-align: left; vertical-align: top; }
-  th { background: #f4f4f4; text-transform: uppercase; font-size: 9px; letter-spacing: 0.03em; }
-  .findings-row td { background: #fafafa; color: #444; font-size: 10.5px; }
-  .badge { padding: 1px 6px; border-radius: 2px; font-size: 10px; }
-  @media print { body { padding: 12px; } }
+  body { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 36px; font-size: 13px; line-height: 1.5; }
+  h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0 0 6px; }
+  .meta { color: #64748b; margin-bottom: 24px; font-size: 12px; }
+  .stats { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 120px; padding: 14px 18px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+  .stat .label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .stat .value { font-size: 24px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; font-size: 12px; }
+  th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 14px; text-align: left; vertical-align: top; }
+  th { background: #f1f5f9; font-weight: 600; text-transform: uppercase; font-size: 11px; color: #475569; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: none; }
+  .findings-row td { background: #f8fafc; color: #475569; font-size: 11.5px; padding-left: 24px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  @media print { body { background: #fff; padding: 12px; } .stat, table { box-shadow: none; } }
 </style>
 </head>
 <body>

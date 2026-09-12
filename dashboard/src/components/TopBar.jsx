@@ -1,81 +1,83 @@
 import ExportMenu from './ExportMenu';
 
-export default function TopBar({ source, onRefresh, sessions, onUploadNew }) {
+export default function TopBar({ source, onRefresh, sessions, onUploadNew, onCompare, currentPage }) {
   const isLive = source === 'live';
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
-      <div className="max-w-[1440px] mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-        {/* Brand & Subtitle */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-sm shadow-blue-500/20">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    <header className="sticky top-0 z-40 border-b border-[#1e2744] bg-[#0c1024]/90 backdrop-blur-xl">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+
+        {/* Brand */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5"
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
           </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-lg font-bold tracking-tight text-slate-900">
-                SecureMailScope
-              </h1>
-              <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                v1.0
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              Email TLS Encryption &amp; Security Posture Inspector
-            </p>
+          <div className="hidden sm:block">
+            <span className="text-sm font-bold text-white tracking-tight">SecureMailScope</span>
+            <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#1e2744] text-[#6c86f5] border border-[#6c86f5]/30">
+              v1.0
+            </span>
           </div>
         </div>
 
-        {/* Status & Actions */}
-        <div className="flex items-center gap-3">
-          {/* Connection Status Badge */}
-          <div
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              isLive
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-amber-50 text-amber-700 border-amber-200'
-            }`}
-          >
-            <span className="relative flex h-2 w-2">
-              {isLive && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              )}
-              <span
-                className={`relative inline-flex rounded-full h-2 w-2 ${
-                  isLive ? 'bg-emerald-500' : 'bg-amber-500'
-                }`}
-              />
-            </span>
-            <span>{isLive ? 'Live Backend Connected' : 'Sample Data (Backend Offline)'}</span>
+        {/* Nav tabs */}
+        <nav className="hidden md:flex items-center gap-1">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: '▦' },
+            { id: 'upload',    label: 'Analyse Capture', icon: '↑' },
+            { id: 'compare',   label: 'Compare', icon: '⊞' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                if (tab.id === 'upload' && onUploadNew) onUploadNew();
+                if (tab.id === 'compare' && onCompare) onCompare();
+                if (tab.id === 'dashboard' && onRefresh) onRefresh();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                currentPage === tab.id
+                  ? 'bg-[#6c86f5]/15 text-[#6c86f5] border border-[#6c86f5]/30'
+                  : 'text-[#7b8ab8] hover:text-white hover:bg-[#1e2744]'
+              }`}
+            >
+              <span className="font-mono text-[11px]">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Right side */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Data source indicator */}
+          <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
+            isLive
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+              : source === null
+              ? 'bg-[#1e2744] border-[#1e2744] text-[#4d5a82]'
+              : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              isLive ? 'bg-emerald-400 animate-pulse' : 'bg-[#4d5a82]'
+            }`} />
+            {isLive ? 'Live' : source === null ? 'Loading…' : 'Offline'}
           </div>
 
-          {/* Analyse New Capture Button */}
-          {onUploadNew && (
-            <button
-              onClick={onUploadNew}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all cursor-pointer"
-            >
-              <svg className="w-3.5 h-3.5 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              Analyse New Capture
-            </button>
-          )}
-
-          {/* Refresh Button */}
+          {/* Refresh */}
           <button
             onClick={onRefresh}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-[#7b8ab8] hover:text-white hover:bg-[#1e2744] border border-transparent hover:border-[#1e2744] transition-all cursor-pointer"
+            title="Refresh data"
           >
-            <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Refresh
           </button>
 
-          {/* Export Dropdown */}
+          {/* Export */}
           <ExportMenu sessions={sessions} />
         </div>
       </div>
