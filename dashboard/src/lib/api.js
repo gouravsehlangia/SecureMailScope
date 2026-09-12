@@ -61,62 +61,93 @@ export function isBackendReachable() {
 }
 
 /**
- * Validate a PCAP/PCAPNG file before upload.
- * Returns { valid: boolean, error?: string }.
+ * Validate a file before processing. Supports:
+ * 1. .json files (output directly from ML engineer)
+ * 2. .pcap / .pcapng files (raw network captures)
  *
- * Checks:
- *  1. File extension must be .pcap or .pcapng
- *  2. File size must be > 0 and < 500 MB
- *  3. File magic bytes:
- *       PCAP:   d4 c3 b2 a1  (little-endian) or  a1 b2 c3 d4 (big-endian)
- *       PCAPNG: 0a 0d 0d 0a (Section Header Block magic)
+ * Returns { valid: boolean, type: 'json'|'pcap', data?: any, format?: string, count?: number, error?: string }.
  */
-export async function validatePcapFile(file) {
+export async function validateDataFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
-  if (!['pcap', 'pcapng'].includes(ext)) {
-    return {
-      valid: false,
-      error: `Invalid file type ".${ext}". Please upload a .pcap or .pcapng capture file.`,
-    };
-  }
 
   if (file.size === 0) {
     return { valid: false, error: 'The file appears to be empty (0 bytes).' };
   }
 
-  const MAX_MB = 500;
-  if (file.size > MAX_MB * 1024 * 1024) {
-    const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-    return {
-      valid: false,
-      error: `File is too large (${sizeMB} MB). Maximum allowed size is ${MAX_MB} MB.`,
-    };
+  // Handle JSON file from ML Engineer directly
+  if (ext === 'json') {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed : (parsed.sessions || [parsed]);
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return { valid: false, error: 'JSON file is empty or does not contain a session array.' };
+      }
+
+      // Check basic session structure
+      const sample = items[0];
+      if (!sample || typeof sample !== 'object') {
+        return { valid: false, error: 'JSON elements must be valid session objects.' };
+      }
+
+      return {
+        valid: true,
+        type: 'json',
+        data: items,
+        count: items.length,
+        format: `JSON dataset (${items.length} sessions)`,
+      };
+    } catch (e) {
+      return { valid: false, error: `Invalid JSON syntax: ${e.message}` };
+    }
   }
 
-  // Read first 4 bytes to verify magic number
-  try {
-    const header = await file.slice(0, 4).arrayBuffer();
-    const bytes = new Uint8Array(header);
-    const magic = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join(' ');
-
-    // PCAP little-endian: d4 c3 b2 a1
-    // PCAP big-endian:    a1 b2 c3 d4
-    // PCAPNG SHB:         0a 0d 0d 0a
-    const PCAP_LE = 'd4 c3 b2 a1';
-    const PCAP_BE = 'a1 b2 c3 d4';
-    const PCAPNG  = '0a 0d 0d 0a';
-
-    if (magic !== PCAP_LE && magic !== PCAP_BE && magic !== PCAPNG) {
+  // Handle PCAP / PCAPNG
+  if (['pcap', 'pcapng'].includes(ext)) {
+    const MAX_MB = 500;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1);
       return {
         valid: false,
-        error: `File header does not match PCAP/PCAPNG format (got 0x${magic.replace(/ /g, '')}). Is this really a capture file?`,
+        error: `File is too large (${sizeMB} MB). Maximum allowed size is ${MAX_MB} MB.`,
       };
     }
 
-    return { valid: true, format: magic === PCAPNG ? 'PCAPNG' : 'PCAP' };
-  } catch (e) {
-    return { valid: false, error: 'Could not read file header for validation.' };
+    try {
+      const header = await file.slice(0, 4).arrayBuffer();
+      const bytes = new Uint8Array(header);
+      const magic = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join(' ');
+
+      const PCAP_LE = 'd4 c3 b2 a1';
+      const PCAP_BE = 'a1 b2 c3 d4';
+      const PCAPNG  = '0a 0d 0d 0a';
+
+      if (magic !== PCAP_LE && magic !== PCAP_BE && magic !== PCAPNG) {
+        return {
+          valid: false,
+          error: `File header does not match PCAP/PCAPNG format (got 0x${magic.replace(/ /g, '')}).`,
+        };
+      }
+
+      return {
+        valid: true,
+        type: 'pcap',
+        format: magic === PCAPNG ? 'PCAPNG' : 'PCAP',
+      };
+    } catch (e) {
+      return { valid: false, error: 'Could not read file header for validation.' };
+    }
   }
+
+  return {
+    valid: false,
+    error: `Unsupported file format ".${ext}". Please upload a .json file from the ML pipeline or a .pcap/.pcapng capture.`,
+  };
+}
+
+export async function validatePcapFile(file) {
+  return validateDataFile(file);
 }
 
 /**

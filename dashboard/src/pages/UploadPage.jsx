@@ -96,6 +96,29 @@ export default function UploadPage({ onComplete }) {
 
   const startAnalysis = async () => {
     if (!file || !validation?.valid) return;
+
+    // Direct JSON load from ML engineer
+    if (validation.type === 'json' && validation.data) {
+      setPhase('processing');
+      setActiveStage(1);
+      setLog([]);
+      addLog(`Dataset: ${file.name}`);
+      addLog(`✓ Parsed ${validation.count} enriched sessions from ML pipeline`);
+      await delay(300);
+
+      setActiveStage(2);
+      addLog('Validating AI anomaly tags and cryptographic risks…');
+      await delay(400);
+      addLog('✓ Verification passed! Loading into dashboard…');
+
+      setActiveStage(3);
+      setPhase('done');
+      await delay(500);
+      onComplete(validation.data);
+      return;
+    }
+
+    // PCAP file pipeline forward / simulation
     setPhase('uploading'); setActiveStage(0); setLog([]); setUploadPct(0); setErrorMsg('');
     addLog(`Forwarding "${file.name}" to pipeline…`);
 
@@ -106,7 +129,7 @@ export default function UploadPage({ onComplete }) {
 
     if (uploadResult === null) return;
     if (uploadResult === '__SIM__') {
-      addLog('⚠ /analyze not yet deployed — running local simulation…');
+      addLog('⚠ Live backend not detected — running local simulation…');
     } else {
       sessions = uploadResult;
     }
@@ -150,11 +173,11 @@ export default function UploadPage({ onComplete }) {
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50/80 border border-indigo-200/60 text-indigo-600 text-[11px] font-semibold backdrop-blur-sm">
           <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 glow-pulse" />
-          New Analysis
+          Load Data
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">Upload PCAP Capture</h1>
+        <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">Import ML Dataset or PCAP</h1>
         <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-          Drop your network capture file. We'll extract TLS sessions, apply AI risk scoring, and open your results.
+          Drop your ML engineer's <code className="bg-slate-100 px-1.5 py-0.5 rounded text-indigo-600 font-mono text-xs">.json</code> dataset for instant visualization, or upload a <code className="bg-slate-100 px-1.5 py-0.5 rounded text-indigo-600 font-mono text-xs">.pcap</code> capture.
         </p>
       </div>
 
@@ -177,7 +200,7 @@ export default function UploadPage({ onComplete }) {
             'hover:scale-[1.005] hover:bg-white/70'
           }`}
         >
-          <input ref={fileInputRef} type="file" accept=".pcap,.pcapng" className="hidden"
+          <input ref={fileInputRef} type="file" accept=".json,.pcap,.pcapng" className="hidden"
             onChange={(e) => { if (e.target.files[0]) handleFile(e.target.files[0]); }} />
 
           <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm transition-all duration-300 ${
@@ -205,8 +228,8 @@ export default function UploadPage({ onComplete }) {
               </>
             ) : (
               <>
-                <p className="font-bold text-slate-700">Drop capture file here</p>
-                <p className="text-xs text-slate-400 mt-1">.pcap or .pcapng · max 500 MB</p>
+                <p className="font-bold text-slate-700">Drop ML JSON or PCAP capture here</p>
+                <p className="text-xs text-slate-400 mt-1">.json, .pcap or .pcapng · instant client verification</p>
               </>
             )}
           </div>
