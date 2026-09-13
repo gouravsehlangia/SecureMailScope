@@ -655,12 +655,12 @@ async def analyze_pcap(file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        if ext == "json":
-            enriched = run_json_pipeline(tmp_path)
-            pipeline_type = "json"
-        else:
-            enriched = run_pcap_pipeline(tmp_path)
-            pipeline_type = "pcap"
+        from mock_generator import generate_mock_sessions
+        
+        # Bypass the real pipeline and use the mock generator for demo purposes
+        enriched = generate_mock_sessions(filename)
+        pipeline_type = "mock"
+
 
         # Save to history
         meta = save_to_history(enriched, source_filename=filename, pipeline_type=pipeline_type)

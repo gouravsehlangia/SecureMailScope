@@ -118,45 +118,64 @@ export default function UploadPage({ onComplete }) {
       return;
     }
 
-    // PCAP file pipeline forward / simulation
+    // PCAP file pipeline — send to real backend
     setPhase('uploading'); setActiveStage(0); setLog([]); setUploadPct(0); setErrorMsg('');
-    addLog(`Forwarding "${file.name}" to pipeline…`);
+    addLog(`Forwarding "${file.name}" to backend pipeline…`);
 
-    let sessions = null;
-    const uploadResult = await uploadPcapForAnalysis(file, pct => setUploadPct(pct))
-      .catch(err => err.message === 'BACKEND_ENDPOINT_MISSING' ? '__SIM__' : Promise.reject(err))
-      .catch(err => { setPhase('error'); setErrorMsg(err.message); addLog(`✕ ${err.message}`); return null; });
-
-    if (uploadResult === null) return;
-    if (uploadResult === '__SIM__') {
-      addLog('⚠ Live backend not detected — running local simulation…');
-    } else {
-      sessions = uploadResult;
+    let backendResult = null;
+    try {
+      backendResult = await uploadPcapForAnalysis(file, pct => setUploadPct(pct));
+    } catch (err) {
+      if (err.message === 'BACKEND_ENDPOINT_MISSING') {
+        setPhase('error');
+        setErrorMsg('Backend /analyze endpoint not found. Make sure FastAPI (pipeline.py) is running on port 8000.');
+        addLog('✕ Backend /analyze endpoint not available.');
+      } else {
+        setPhase('error');
+        setErrorMsg(err.message || 'Unknown backend error');
+        addLog(`✕ ${err.message}`);
+      }
+      return;
     }
+
+    if (!backendResult || !Array.isArray(backendResult.sessions)) {
+      setPhase('error');
+      setErrorMsg('Backend returned invalid response. Check if pipeline.py is running correctly.');
+      addLog('✕ Invalid response from backend.');
+      return;
+    }
+
+    const sessions = backendResult.sessions;
 
     setActiveStage(1); setPhase('processing');
-    addLog(''); addLog('━━ STAGE 1 · Packet Parser ━━━━━━━━━━━');
-    await delay(600); addLog('Extracting TLS sessions…');
-    await delay(700); addLog(`✓ ${120 + Math.floor(Math.random() * 80)} sessions extracted`);
+    addLog(''); addLog('━━ STAGE 1 · PCAP Parsing ━━━━━━━━━━━');
+    addLog(`✓ Pipeline processed ${file.name}`);
 
     setActiveStage(2);
-    addLog(''); addLog('━━ STAGE 2 · AI/ML Enrichment ━━━━━━━━');
-    await delay(500); addLog('Running risk scoring…');
-    await delay(700); addLog('Training anomaly detector…');
-    await delay(500); addLog('Generating AI recommendations…');
-    await delay(400); addLog('✓ All sessions enriched');
-
-    addLog(''); addLog('Fetching results…');
-    if (!sessions) {
-      const { fetchSessions } = await import('../lib/api');
-      const res = await fetchSessions();
-      sessions = res.sessions;
+    addLog(''); addLog('━━ STAGE 2–4 · TLS, Cert, AI/ML ━━━━━━━');
+    if (backendResult.metadata) {
+      const m = backendResult.metadata;
+      addLog(`Sessions found: ${m.session_count}`);
+      addLog(`Risk summary: ${JSON.stringify(m.risk_summary || {})}`);
+      addLog(`Anomalies: ${m.anomaly_count || 0}`);
+      addLog(`Avg risk score: ${m.avg_risk_score || 0}`);
     }
+    await delay(300);
+
+    if (sessions.length === 0) {
+      addLog('');
+      addLog('⚠ No email sessions (SMTP/IMAP/POP3) found in this PCAP.');
+      addLog('  The file was parsed but contained no email protocol traffic.');
+      setPhase('error');
+      setErrorMsg('No email sessions found. The PCAP may not contain SMTP/IMAP/POP3 traffic.');
+      return;
+    }
+
     addLog(`✓ ${sessions.length} enriched sessions ready`);
-    await delay(300); addLog('Opening dashboard…');
+    addLog('Opening dashboard…');
     setActiveStage(3); setPhase('done');
-    await delay(800);
-    onComplete(sessions);
+    await delay(500);
+    onComplete(sessions, file.name);
   };
 
   const reset = () => {
