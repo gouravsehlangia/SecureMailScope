@@ -175,7 +175,7 @@ export default function UploadPage({ onComplete }) {
     addLog('Opening dashboard…');
     setActiveStage(3); setPhase('done');
     await delay(500);
-    onComplete(sessions);
+    onComplete(sessions, file.name);
   };
 
   const reset = () => {

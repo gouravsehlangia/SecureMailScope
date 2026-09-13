@@ -10,7 +10,7 @@ import RiskDistributionChart from './components/RiskDistributionChart';
 import QuickStatsWidget from './components/QuickStatsWidget';
 import RecentActivityWidget from './components/RecentActivityWidget';
 import FilterBar from './components/FilterBar';
-import SessionTable from './components/SessionTable';
+import ActionHistoryTable from './components/ActionHistoryTable';
 import SessionDetail from './components/SessionDetail';
 import UploadPage from './pages/UploadPage';
 import ComparePage from './pages/ComparePage';
@@ -23,8 +23,30 @@ export default function App() {
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState(null);
   const [selected, setSelected]     = useState(null);
-  const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters]       = useState({ severity: null, anomalyOnly: false, search: '' });
+  
+  // Compare Page State
+  const [compareInitialData, setCompareInitialData] = useState(null);
+
+  // Action History State (persisted in localStorage)
+  const [actionHistory, setActionHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sms_action_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sms_action_history', JSON.stringify(actionHistory));
+  }, [actionHistory]);
+
+  const addActionToHistory = (type, files, data) => {
+    setActionHistory(prev => {
+      const newItem = { id: Date.now().toString(), type, files, data, timestamp: Date.now() };
+      return [newItem, ...prev].slice(0, 10);
+    });
+  };
 
   async function load() {
     setLoading(true);
@@ -40,16 +62,36 @@ export default function App() {
     }
   }
 
-  function handleAnalysisComplete(enrichedSessions) {
+  function handleAnalysisComplete(enrichedSessions, filename) {
     if (enrichedSessions) {
       setSessions(enrichedSessions);
       setSource('live');
+      if (filename) {
+        addActionToHistory('analyze', [filename], enrichedSessions);
+      }
     } else {
       load();
     }
     setSelected(null);
-    setFilters({ severity: null, anomalyOnly: false, search: '' });
     setPage('dashboard');
+  }
+
+  function handleCompare(filenames, datasets, readySlots) {
+    if (filenames && filenames.length > 0) {
+      addActionToHistory('compare', filenames, { datasets, readySlots });
+    }
+  }
+
+  function handleHistoryItemClick(item) {
+    if (item.type === 'analyze') {
+      setSessions(item.data);
+      setSource('live');
+      setSelected(null);
+      setPage('dashboard');
+    } else if (item.type === 'compare') {
+      setCompareInitialData(item.data);
+      setPage('compare');
+    }
   }
 
   function handleLoadHistoryRun(historySessions) {
@@ -57,7 +99,6 @@ export default function App() {
       setSessions(historySessions);
       setSource('live');
       setSelected(null);
-      setFilters({ severity: null, anomalyOnly: false, search: '' });
       setPage('dashboard');
     }
   }
@@ -68,22 +109,6 @@ export default function App() {
     }
   }, []);
 
-  const filtered = useMemo(() =>
-    sessions.filter((s) => {
-      if (filters.severity && s.risk_level !== filters.severity) return false;
-      if (filters.anomalyOnly && !s.anomaly_flag) return false;
-      if (filters.search) {
-        const q = filters.search.toLowerCase();
-        if (
-          !s.session_id.toLowerCase().includes(q) &&
-          !s.cipher_suite.toLowerCase().includes(q) &&
-          !s.tls_version.toLowerCase().includes(q) &&
-          !s.protocol.toLowerCase().includes(q)
-        ) return false;
-      }
-      return true;
-    }), [sessions, filters]);
-
   return (
     <div className="min-h-dvh flex flex-col selection:bg-sky-500 selection:text-white">
       {/* ── PERSISTENT TOP NAV — matching existing structure ── */}
@@ -92,10 +117,11 @@ export default function App() {
         source={source}
         onNavigate={(p) => {
           if (p === 'dashboard' && sessions.length === 0) load();
+          if (p === 'compare') setCompareInitialData(null); // Clear compare initial data on manual nav
           setPage(p);
         }}
         onRefresh={load}
-        sessions={filtered}
+        sessions={sessions}
       />
 
       {/* ── MAIN CONTENT ── */}
@@ -112,7 +138,7 @@ export default function App() {
 
         {/* Compare Page */}
         {page === 'compare' && (
-          <ComparePage />
+          <ComparePage onCompare={handleCompare} initialData={compareInitialData} />
         )}
 
         {/* Dashboard */}
@@ -149,7 +175,7 @@ export default function App() {
 
                 {/* 3. Two-Column Master Layout */}
                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-                  {/* Left Column (Charts & Session Table) */}
+                  {/* Left Column (Charts & History Table) */}
                   <div className="xl:col-span-8 2xl:col-span-9 space-y-4">
                     {/* Middle 3 Charts Row */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -158,27 +184,11 @@ export default function App() {
                       <ProtocolBreakdownChart sessions={sessions} />
                     </div>
 
-                    {/* Collapsible Filter Bar if toggled */}
-                    {showFilters && (
-                      <div className="fade-up">
-                        <FilterBar
-                          filters={filters}
-                          setFilters={setFilters}
-                          resultCount={filtered.length}
-                          totalCount={sessions.length}
-                        />
-                      </div>
-                    )}
-
-                    {/* Email Sessions Table */}
-                    <SessionTable
-                      sessions={filtered}
-                      onSelect={setSelected}
-                      selectedId={selected?.session_id}
-                      showCount={10}
-                      searchQuery={filters.search}
-                      onSearchChange={(val) => setFilters(f => ({ ...f, search: val }))}
-                      onFilterToggle={() => setShowFilters(prev => !prev)}
+                    {/* Action History Table */}
+                    <ActionHistoryTable 
+                      history={actionHistory} 
+                      onClear={() => setActionHistory([])} 
+                      onItemClick={handleHistoryItemClick}
                     />
                   </div>
 

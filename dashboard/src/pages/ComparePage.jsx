@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { validatePcapFile, uploadPcapForAnalysis } from '../lib/api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 
@@ -217,15 +217,25 @@ const getGrade = (score) => {
 };
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export default function ComparePage() {
-  const [slots,      setSlots]      = useState(2);
+export default function ComparePage({ onCompare, initialData }) {
+  const [slots,      setSlots]      = useState(initialData ? Object.keys(initialData.readySlots).length : 2);
   // readySlots[slotIdx] = { label, sessions, timestamp, metadata }
-  const [readySlots, setReadySlots] = useState({});
-  const [datasets,   setDatasets]   = useState([]);
-  const [compared,   setCompared]   = useState(false);
+  const [readySlots, setReadySlots] = useState(initialData ? initialData.readySlots : {});
+  const [datasets,   setDatasets]   = useState(initialData ? initialData.datasets : []);
+  const [compared,   setCompared]   = useState(initialData ? true : false);
 
   const numReady   = Object.keys(readySlots).length;
   const canCompare = numReady >= 2;
+
+  // If initialData changes (e.g. clicking a history item), update state
+  useEffect(() => {
+    if (initialData) {
+      setSlots(Object.keys(initialData.readySlots).length);
+      setReadySlots(initialData.readySlots);
+      setDatasets(initialData.datasets);
+      setCompared(true);
+    }
+  }, [initialData]);
 
   const handleSlotReady = (idx, data) => {
     setReadySlots(prev => ({ ...prev, [idx]: data }));
@@ -257,6 +267,9 @@ export default function ComparePage() {
     }));
     setDatasets(built);
     setCompared(true);
+    if (onCompare) {
+      onCompare(built.map(d => d.label), built, readySlots);
+    }
     setTimeout(() => {
       document.getElementById('comparison-results')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);

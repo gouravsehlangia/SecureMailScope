@@ -3,7 +3,7 @@ export default function WelcomeBanner() {
     <div className="glass-card rounded-2xl px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
       <div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-          <span>Welcome back, Team</span>
+          <span>Welcome back</span>
           <span className="text-xl inline-block hover:rotate-12 transition-transform cursor-default">👋</span>
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
